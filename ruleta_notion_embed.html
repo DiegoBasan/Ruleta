@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;700&family=Playfair+Display:wght@700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: transparent;
+    font-family: 'DM Sans', sans-serif;
+    color: #fff;
+    user-select: none;
+  }
+
+  .app {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px 14px;
+    background: #111;
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  /* TABS */
+  .tabs {
+    width: 100%;
+    display: flex;
+    background: #1c1c1c;
+    border-radius: 10px;
+    padding: 3px;
+    flex-shrink: 0;
+  }
+
+  .tab {
+    flex: 1;
+    padding: 7px 0;
+    border: none;
+    background: transparent;
+    color: rgba(255,255,255,0.3);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all 0.25s ease;
+  }
+
+  .tab.active {
+    background: #fff;
+    color: #111;
+  }
+
+  /* WHEEL */
+  .wheel-wrap {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  canvas {
+    display: block;
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  canvas:active { opacity: 0.88; }
+
+  .ptr {
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-top: 18px solid #fff;
+    filter: drop-shadow(0 1px 4px rgba(0,0,0,0.6));
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  .ptr.shake { animation: ptick 0.07s ease; }
+
+  @keyframes ptick {
+    0%   { transform: translateX(-50%) rotate(-12deg); }
+    50%  { transform: translateX(-50%) rotate(12deg); }
+    100% { transform: translateX(-50%); }
+  }
+
+  .hint {
+    font-size: 0.6rem;
+    color: rgba(255,255,255,0.18);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-weight: 600;
+    flex-shrink: 0;
+    margin-top: -2px;
+  }
+
+  /* RESULT */
+  .result {
+    width: 100%;
+    text-align: center;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .result-label {
+    font-size: 0.58rem;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.25);
+    font-weight: 700;
+  }
+
+  .result-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.15rem;
+    color: #fff;
+    line-height: 1.2;
+  }
+
+  .result-name.empty {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.18);
+    font-weight: 500;
+  }
+
+  /* CONFETTI */
+  .cfbox {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 999;
+    overflow: hidden;
+  }
+
+  .c {
+    position: absolute;
+    top: -12px;
+    animation: cffall linear forwards;
+  }
+
+  @keyframes cffall {
+    to { transform: translateY(110vh) rotate(600deg); opacity: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="tabs">
+    <button class="tab active" id="tabFood" onclick="setMode('food')">🍔 Comida</button>
+    <button class="tab" id="tabDessert" onclick="setMode('dessert')">🍮 Postre</button>
+  </div>
+
+  <div class="wheel-wrap" id="ww">
+    <div class="ptr" id="ptr"></div>
+    <canvas id="c"></canvas>
+  </div>
+
+  <p class="hint">toca la ruleta para girar</p>
+
+  <div class="result">
+    <div class="result-label">Hoy toca</div>
+    <div class="result-name empty" id="rname">— gira la ruleta —</div>
+  </div>
+
+</div>
+
+<div class="cfbox" id="cfbox"></div>
+
+<script>
+const DATA = {
+  food: {
+    items: [
+      "MR. QUICK","COMIDA CHINA\n(GALERIAS)","ALSUSHI","COCINA\nDOÑA ELIA",
+      "4 KTIRAS","PIZZA\n(LOS SANTOS)","WINGO\n(PROMOS)","SNACK HOUSE",
+      "MONKEY PAPAS","MCDONALDS","TACOS AL\nPASTOR","RED BOX",
+      "GORDITAS","BOLAS DE\nARROZ","SUN ROLL","WENDY'S","SUBWAY"
+    ]
+  },
+  dessert: {
+    items: [
+      "HEBRON","DOLCE","DAIRY QUEEN","GONGCHA",
+      "COLDY","NEVERIA\nGENERICA","FRESAS CON\nCREMA","PAN DE SMART","BIO","PALETA OXXO"
+    ]
+  }
+};
+
+const FOOD_SLICES    = ['#1e1e1e','#2a2a2a','#222','#333','#1a1a1a','#2e2e2e','#252525','#303030','#1c1c1c','#282828','#242424','#2c2c2c','#202020','#262626','#1e1e1e','#2a2a2a','#222'];
+const DESSERT_SLICES = ['#0e1e2a','#122030','#0a1822','#142434','#0c1c28','#102236','#0e2030','#162638','#0a1c26','#12202e'];
+const FOOD_TEXT      = ['#fff','#ccc','#eee','#ddd','#bbb','#e8e8e8','#d5d5d5','#f0f0f0','#c8c8c8','#e0e0e0','#d8d8d8','#ebebeb','#cfcfcf','#e5e5e5','#f5f5f5','#d0d0d0','#e8e8e8'];
+const DESSERT_TEXT   = ['#7dd3fc','#93c5fd','#67e8f9','#a5b4fc','#6ee7b7','#bae6fd','#c7d2fe','#99f6e4','#7dd3fc','#a78bfa'];
+
+const cv  = document.getElementById('c');
+const ctx = cv.getContext('2d');
+
+let SIZE = 260;
+let CX, CY, R;
+let mode = 'food';
+let items = [], slices = [], texts = [], accent = '#fff';
+let angle = 0, spinning = false, lastIdx = -1;
+
+// Responsive: fit canvas to available vertical space
+function resize() {
+  const appH = document.querySelector('.app').clientHeight;
+  const tabsH = document.querySelector('.tabs').offsetHeight;
+  const hintH = document.querySelector('.hint').offsetHeight;
+  const resultH = document.querySelector('.result').offsetHeight;
+  const gap = 12 * 4; // approx gaps
+  const available = appH - tabsH - hintH - resultH - gap;
+  SIZE = Math.min(Math.floor(available), Math.floor(document.querySelector('.app').clientWidth - 32));
+  SIZE = Math.max(160, SIZE);
+  cv.width = SIZE;
+  cv.height = SIZE;
+  cv.style.width  = SIZE + 'px';
+  cv.style.height = SIZE + 'px';
+  CX = SIZE / 2; CY = SIZE / 2; R = SIZE / 2 - 6;
+  draw(angle);
+}
+
+function setMode(m) {
+  if (spinning) return;
+  mode = m;
+  items  = DATA[m].items;
+  slices = m === 'food' ? FOOD_SLICES    : DESSERT_SLICES;
+  texts  = m === 'food' ? FOOD_TEXT      : DESSERT_TEXT;
+  accent = m === 'food' ? '#ffffff'      : '#38bdf8';
+
+  document.getElementById('tabFood').classList.toggle('active', m === 'food');
+  document.getElementById('tabDessert').classList.toggle('active', m === 'dessert');
+
+  const rname = document.getElementById('rname');
+  rname.textContent = '— gira la ruleta —';
+  rname.classList.add('empty');
+
+  angle = 0; lastIdx = -1;
+  draw(angle);
+}
+
+function draw(rot) {
+  if (!CX) return;
+  ctx.clearRect(0, 0, SIZE, SIZE);
+  const n = items.length;
+  const arc = (2 * Math.PI) / n;
+
+  for (let i = 0; i < n; i++) {
+    const s = rot + i * arc, e = s + arc;
+
+    ctx.beginPath();
+    ctx.moveTo(CX, CY);
+    ctx.arc(CX, CY, R, s, e);
+    ctx.closePath();
+    ctx.fillStyle = slices[i % slices.length];
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // accent dot
+    const mid = s + arc / 2;
+    ctx.beginPath();
+    ctx.arc(CX + (R - 12) * Math.cos(mid), CY + (R - 12) * Math.sin(mid), 2.5, 0, 2 * Math.PI);
+    ctx.fillStyle = accent;
+    ctx.globalAlpha = 0.5;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // text
+    ctx.save();
+    ctx.translate(CX, CY);
+    ctx.rotate(mid);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = texts[i % texts.length];
+    ctx.shadowColor = 'rgba(0,0,0,0.9)';
+    ctx.shadowBlur = 5;
+    const lines = items[i].split('\n');
+    const fs = n > 12 ? Math.max(8, SIZE * 0.028) : Math.max(9, SIZE * 0.033);
+    ctx.font = `700 ${fs}px 'DM Sans', sans-serif`;
+    const lh = fs + 2;
+    const total = lines.length * lh;
+    lines.forEach((ln, li) => {
+      ctx.fillText(ln, R - 16, -total / 2 + li * lh + lh * 0.75);
+    });
+    ctx.restore();
+  }
+
+  // outer ring
+  ctx.beginPath();
+  ctx.arc(CX, CY, R, 0, 2 * Math.PI);
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // center cap
+  ctx.beginPath();
+  ctx.arc(CX, CY, SIZE * 0.07, 0, 2 * Math.PI);
+  ctx.fillStyle = '#111';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+function getWinner(rot) {
+  const n = items.length;
+  const arc = (2 * Math.PI) / n;
+  const norm = ((-Math.PI / 2 - rot) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+  return Math.floor(norm / arc) % n;
+}
+
+function spin() {
+  if (spinning) return;
+  spinning = true;
+  const rname = document.getElementById('rname');
+  rname.textContent = '...';
+  rname.classList.remove('empty');
+
+  const extra  = 6 + Math.random() * 4;
+  const target = angle + extra * 2 * Math.PI + Math.random() * 2 * Math.PI;
+  const dur    = 3600 + Math.random() * 1200;
+  const t0     = performance.now();
+  const a0     = angle;
+
+  function ease(t) { return 1 - Math.pow(1 - t, 4); }
+
+  function frame(now) {
+    const t = Math.min((now - t0) / dur, 1);
+    angle = a0 + (target - a0) * ease(t);
+    draw(angle);
+
+    const idx = getWinner(angle);
+    if (idx !== lastIdx) {
+      lastIdx = idx;
+      const ptr = document.getElementById('ptr');
+      ptr.classList.remove('shake');
+      void ptr.offsetWidth;
+      ptr.classList.add('shake');
+    }
+
+    if (t < 1) { requestAnimationFrame(frame); return; }
+
+    angle = target;
+    draw(angle);
+    rname.textContent = items[getWinner(angle)].replace(/\n/g, ' ');
+    rname.classList.remove('empty');
+    boom();
+    spinning = false;
+  }
+
+  requestAnimationFrame(frame);
+}
+
+function boom() {
+  const box = document.getElementById('cfbox');
+  box.innerHTML = '';
+  const cols = mode === 'food'
+    ? ['#fff','#e5e5e5','#ccc','#aaa']
+    : ['#38bdf8','#7dd3fc','#a5b4fc','#6ee7b7'];
+  for (let i = 0; i < 35; i++) {
+    const d = document.createElement('div');
+    d.className = 'c';
+    const sz = 4 + Math.random() * 7;
+    d.style.cssText = `
+      left:${Math.random()*100}%;
+      top:${-10-Math.random()*40}px;
+      width:${sz}px; height:${sz}px;
+      background:${cols[Math.floor(Math.random()*cols.length)]};
+      border-radius:${Math.random()>.5?'50%':'2px'};
+      animation-duration:${1+Math.random()}s;
+      animation-delay:${Math.random()*0.3}s;
+      opacity:${0.7+Math.random()*0.3};
+    `;
+    box.appendChild(d);
+  }
+  setTimeout(() => box.innerHTML = '', 2500);
+}
+
+cv.addEventListener('click', spin);
+cv.addEventListener('touchend', e => { e.preventDefault(); spin(); }, { passive: false });
+
+window.addEventListener('load', () => {
+  setTimeout(() => { resize(); setMode('food'); }, 50);
+});
+window.addEventListener('resize', () => { resize(); draw(angle); });
+</script>
+</body>
+</html>
